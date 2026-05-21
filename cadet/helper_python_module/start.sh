@@ -11,6 +11,11 @@ REGISTERED_MODULES=("00" "01" "02" "03" "04" "05" "06" "07" "08" "09" "10")
 # 출력 색상 / 태그 설정
 # ==============================
 
+printf -v PY_BLUE '\033[1;38;5;33m'
+printf -v PY_YELLOW '\033[1;38;5;220m'
+printf -v BOLD '\033[1m'
+printf -v RESET '\033[0m'
+
 printf -v RED '\033[1;31m'
 printf -v GREEN '\033[1;32m'
 printf -v YELLOW '\033[1;33m'
@@ -30,8 +35,11 @@ TAG_TEST="${CYAN}[TEST]${RESET}"
 TAG_STOP="${RED}[STOP]${RESET}"
 
 # ==============================
-# 과제 명
+# 명칭 설정
 # ==============================
+
+TITLE_MAIN="${PY_BLUE}42 Python Module Helper${RESET}"
+TITLE_SUB="${PY_YELLOW}- Made By <seunkang>${RESET}"
 
 MODULE_00_NAME="Growing Code"
 MODULE_01_NAME="Code Cultivation"
@@ -320,8 +328,70 @@ select_create_modules() {
       create_module_structure "$module"
     done
   else
+    if [[ "$input" =~ ^[0-9]$ ]]; then
+      input="0$input"
+    fi
+
     create_module_structure "$input"
   fi
+}
+
+# ==============================
+# 테스트 메뉴
+# ==============================
+
+run_tests_for_module() {
+  local module="$1"
+  local base_dir
+
+  if ! is_registered_module "$module"; then
+    printf "${TAG_ERROR} 등록되지 않은 module 번호입니다: %s\n" "$module"
+    return 1
+  fi
+
+  base_dir="$(module_dir "$module")"
+
+  if [ ! -d "$base_dir" ]; then
+    printf "${TAG_ERROR} 과제 폴더가 없습니다: %s\n" "$base_dir"
+    return 1
+  fi
+
+  if ! run_static_checks "$base_dir"; then
+    remove_mypy_cache "$base_dir"
+    remove_pycache "$base_dir"
+
+    if ! handle_static_check_error; then
+      return 1
+    fi
+  fi
+
+  if ! run_module_test_by_mapping "$module" "$base_dir"; then
+    remove_mypy_cache "$base_dir"
+    remove_pycache "$base_dir"
+    printf "\n${TAG_WARN} 실행 테스트 중 실패가 감지되었습니다: python module %s\n" "$module"
+    return 1
+  fi
+
+  remove_mypy_cache "$base_dir"
+  remove_pycache "$base_dir"
+  printf "\n${TAG_DONE} 테스트 종료 및 캐시 정리 완료: python module %s\n" "$module"
+}
+
+select_test_module() {
+  local module
+
+  print_line
+  printf '테스트할 module 번호를 입력하세요.\n\n'
+  printf '현재 등록된 module:\n\n'
+  print_registered_modules_with_names
+  printf '\n> '
+  read -r module
+
+  if [[ "$module" =~ ^[0-9]$ ]]; then
+    module="0$module"
+  fi
+
+  run_tests_for_module "$module"
 }
 
 # ==============================
@@ -521,6 +591,9 @@ should_skip_empty_file() {
 run_entry_file() {
   local run_dir="$1"
   local file_name="$2"
+  local short_dir
+
+  short_dir="${run_dir#"$PROJECT_ROOT"/}"
 
   if [ ! -f "$run_dir/$file_name" ]; then
     printf "${TAG_WARN} 진입점 파일 없음: %s/%s\n" "$run_dir" "$file_name"
@@ -531,14 +604,17 @@ run_entry_file() {
     return 0
   fi
 
-  printf "\n${TAG_RUN} %s - python3 %s\n" "$run_dir" "$file_name"
+  printf "\n${TAG_RUN} %s - python3 %s\n" "$short_dir" "$file_name"
   (cd "$run_dir" || exit 1; python3 "$file_name")
 }
 
 run_entry_file_with_args() {
   local run_dir="$1"
   local file_name="$2"
+  local short_dir
   shift 2
+
+  short_dir="${run_dir#"$PROJECT_ROOT"/}"
 
   if [ ! -f "$run_dir/$file_name" ]; then
     printf "${TAG_WARN} 진입점 파일 없음: %s/%s\n" "$run_dir" "$file_name"
@@ -549,7 +625,7 @@ run_entry_file_with_args() {
     return 0
   fi
 
-  printf "\n${TAG_RUN} %s - python3 %s" "$run_dir" "$file_name"
+  printf "\n${TAG_RUN} %s - python3 %s" "$short_dir" "$file_name"
   if [ "$#" -gt 0 ]; then
     printf ' %q' "$@"
   fi
@@ -719,7 +795,7 @@ run_generic_ex_file_tests() {
     run_dir="$(dirname "$file_path")"
     file_name="$(basename "$file_path")"
 
-    printf "\n${TAG_RUN} python module %s/%s - python3 %s\n" "$module" "$(dirname "$item")" "$file_name"
+    printf "\n${TAG_RUN}python_module_%s/%s - python3 %s\n" "$module" "$(dirname "$item")" "$file_name"
 
     if ! (cd "$run_dir" || exit 1; python3 "$file_name"); then
       result=1
@@ -762,8 +838,6 @@ run_module_03_tests() {
   local base_dir="$2"
   local result=0
 
-  printf "\n${TAG_INFO} module 03 인자 기반 테스트\n"
-
   run_entry_file_with_args "$base_dir/ex0" "ft_command_quest.py" || result=1
   run_entry_file_with_args "$base_dir/ex0" "ft_command_quest.py" hello world 42 || result=1
   run_entry_file_with_args "$base_dir/ex0" "ft_command_quest.py" "Data Quest" || result=1
@@ -773,10 +847,17 @@ run_module_03_tests() {
   run_entry_file_with_args "$base_dir/ex1" "ft_score_analytics.py" ab ac || result=1
 
   if ! should_skip_empty_file "$base_dir/ex2/ft_coordinate_system.py"; then
-    printf "\n${TAG_RUN} ex2/ft_coordinate_system.py - input pipe test\n"
+    printf "\n${TAG_RUN} python_module_03/ex2 - python3 ft_coordinate_system.py\n"
+    printf "\n${TAG_INFO} input pipe:\n\n"
+    printf "       1) hello world\n"
+    printf "       2) 1.0 , 2.5, 3.0\n"
+    printf "       3) 4,abc,5\n"
+    printf "       4) 4,5,6\n\n"
     (
       cd "$base_dir/ex2" || exit 1
-      printf 'hello world\n1.0 , 2.5, 3.0\n4,abc,5\n4,5,6\n' | python3 ft_coordinate_system.py
+      printf 'hello world\n1.0 , 2.5, 3.0\n4,abc,5\n4,5,6\n' \
+        | python3 ft_coordinate_system.py \
+        | sed "s/format 'x,y,z': /format 'x,y,z':\n/g"
     ) || result=1
   fi
 
@@ -1003,60 +1084,6 @@ run_module_10_tests() {
 }
 
 # ==============================
-# 테스트 메뉴
-# ==============================
-
-run_tests_for_module() {
-  local module="$1"
-  local base_dir
-
-  if ! is_registered_module "$module"; then
-    printf "${TAG_ERROR} 등록되지 않은 module 번호입니다: %s\n" "$module"
-    return 1
-  fi
-
-  base_dir="$(module_dir "$module")"
-
-  if [ ! -d "$base_dir" ]; then
-    printf "${TAG_ERROR} 과제 폴더가 없습니다: %s\n" "$base_dir"
-    return 1
-  fi
-
-  if ! run_static_checks "$base_dir"; then
-    remove_mypy_cache "$base_dir"
-    remove_pycache "$base_dir"
-
-    if ! handle_static_check_error; then
-      return 1
-    fi
-  fi
-
-  if ! run_module_test_by_mapping "$module" "$base_dir"; then
-    remove_mypy_cache "$base_dir"
-    remove_pycache "$base_dir"
-    printf "\n${TAG_WARN} 실행 테스트 중 실패가 감지되었습니다: python module %s\n" "$module"
-    return 1
-  fi
-
-  remove_mypy_cache "$base_dir"
-  remove_pycache "$base_dir"
-  printf "\n${TAG_DONE} 테스트 종료 및 캐시 정리 완료: python module %s\n" "$module"
-}
-
-select_test_module() {
-  local module
-
-  print_line
-  printf '테스트할 module 번호를 입력하세요.\n\n'
-  printf '현재 등록된 module:\n\n'
-  print_registered_modules_with_names
-  printf '\n> '
-  read -r module
-
-  run_tests_for_module "$module"
-}
-
-# ==============================
 # 팁 보기
 # ==============================
 
@@ -1108,7 +1135,7 @@ install_glow() {
   case "$?" in
     0)
       rm -rf "$cache_dir"
-      printf "\n${TAG_DONE} glow 설치가 완료되었습니다.\n"
+      printf "\n${TAG_DONE} glow 설치가 완료되었습니다.(user/.local/bin/glow)\n"
       return 0
       ;;
     *)
@@ -1239,6 +1266,11 @@ list_tip_modules() {
     [ -d "$dir" ] || continue
 
     module="$(basename "$dir")"
+
+    if [[ "$module" =~ ^[0-9]$ ]]; then
+      module="0$module"
+    fi
+
     name="$(get_module_name "$module")"
 
     printf '%s. "%s"\n' "$module" "$name"
@@ -1252,8 +1284,9 @@ list_tip_files() {
   local module="$1"
   local module_dir="$SCRIPT_DIR/resource/tips/$module"
   local file
+  local filename
+  local number
   local title
-  local index=0
   local found=0
 
   if [ ! -d "$module_dir" ]; then
@@ -1263,12 +1296,12 @@ list_tip_files() {
   while IFS= read -r file; do
     [ -f "$file" ] || continue
 
-    title="$(basename "$file" .md)"
-    title="${title#*_}"
+    filename="$(basename "$file" .md)"
+    number="${filename%%_*}"
+    title="${filename#*_}"
 
-    printf '%d. %s\n' "$index" "$title"
+    printf '%s. %s\n' "$number" "$title"
 
-    index=$((index + 1))
     found=1
   done < <(find "$module_dir" -maxdepth 1 -type f -name '*.md' | sort -V)
 
@@ -1312,10 +1345,14 @@ select_tip_module() {
   fi
 
   print_line
-  printf '팁을 볼 module 번호를 선택하세요.\n'
-  printf '%s\n' "$modules"
+  printf '팁을 볼 module 번호를 선택하세요.\n\n'
+  printf '%s\n\n' "$modules"
   printf '> '
   read -r module
+
+  if [[ "$module" =~ ^[0-9]$ ]]; then
+    module="0$module"
+  fi
 
   if [ ! -d "$SCRIPT_DIR/resource/tips/$module" ]; then
     printf "\n${TAG_WARN} 해당 module tip이 없습니다: %s\n" "$module"
@@ -1339,8 +1376,8 @@ select_tip_file() {
   fi
 
   print_line
-  printf 'module %s에서 볼 tip 번호를 입력하세요.\n' "$module"
-  printf '%s\n' "$tip_files"
+  printf 'module %s에서 볼 tip 번호를 입력하세요.\n\n' "$module"
+  printf '%s\n\n' "$tip_files"
   printf '> '
   read -r tip_index
 
@@ -1397,8 +1434,8 @@ main_menu() {
   while true; do
     clear 2>/dev/null || true
     print_line
-    printf '42 Python Module Helper - Made By <seunkang>\n\n'
-    printf 'project root: %s\n' "$PROJECT_ROOT"
+    printf '%b %b\n\n' "$TITLE_MAIN" "$TITLE_SUB"
+    printf "${CYAN}Project Root:${RESET}%s\n" "$PROJECT_ROOT"
     print_line
     printf '0. 사용법 보기\n'
     printf '1. 디렉토리/파일 생성\n'
@@ -1427,7 +1464,8 @@ main_menu() {
         ask_continue
         ;;
       4)
-        printf '수고~!!!\n'
+        clear 2>/dev/null || true
+        printf 'Python Module Helper : 수고!!\n'
         exit 0
         ;;
       *)
