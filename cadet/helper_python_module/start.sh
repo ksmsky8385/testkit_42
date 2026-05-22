@@ -876,33 +876,62 @@ run_module_04_tests() {
   local _module="$1"
   local base_dir="$2"
   local resource_dir="$SCRIPT_DIR/resource/module_04"
-  local sample_file="$resource_dir/ancient_fragment.txt"
+  local sample_src="$resource_dir/ancient_fragment.txt"
+  local sample_name="ancient_fragment.txt"
+  local sample_dst="$base_dir/ex0/$sample_name"
+  local etc_src="$resource_dir/etc"
   local result=0
 
-  if [ ! -f "$sample_file" ]; then
-    printf "${TAG_ERROR} module 04 테스트 리소스 파일이 없습니다: %s\n" "$sample_file"
+  if [ ! -f "$sample_src" ]; then
+    printf "${TAG_ERROR} module 04 테스트 리소스 파일이 없습니다: %s\n" "$sample_src"
     return 1
   fi
 
-  printf "\n${TAG_INFO} module 04 파일 입출력 테스트\n"
+  if ! should_skip_empty_file "$base_dir/ex0/ft_ancient_text.py"; then
+    cp "$sample_src" "$sample_dst"
 
-  run_entry_file_with_args "$base_dir/ex0" "ft_ancient_text.py" || result=1
-  run_entry_file_with_args "$base_dir/ex0" "ft_ancient_text.py" "foo" || result=1
-  run_entry_file_with_args "$base_dir/ex0" "ft_ancient_text.py" "$sample_file" || result=1
+    if [ -f "$etc_src/master.passwd" ]; then
+      rm -rf "$base_dir/ex0/etc"
+      mkdir -p "$base_dir/ex0/etc"
+      cp "$etc_src/master.passwd" "$base_dir/ex0/etc/master.passwd"
+      chmod 000 "$base_dir/ex0/etc/master.passwd" 2>/dev/null || true
+    else
+      printf "${TAG_WARN} module 04 권한 테스트 리소스가 없습니다: %s/master.passwd\n" "$etc_src"
+    fi
+
+    printf "\n${TAG_INFO} cat ancient_fragment.txt\n"
+    (
+      cd "$base_dir/ex0" || exit 1
+      cat "$sample_name"
+      printf "\n"
+    ) || result=1
+
+    run_entry_file_with_args "$base_dir/ex0" "ft_ancient_text.py" || result=1
+    run_entry_file_with_args "$base_dir/ex0" "ft_ancient_text.py" "foo" || result=1
+    run_entry_file_with_args "$base_dir/ex0" "ft_ancient_text.py" "etc/master.passwd" || result=1
+    run_entry_file_with_args "$base_dir/ex0" "ft_ancient_text.py" "$sample_name" || result=1
+
+    rm -f "$sample_dst"
+    chmod -R u+rwx "$base_dir/ex0/etc" 2>/dev/null || true
+    rm -rf "$base_dir/ex0/etc"
+  fi
 
   if ! should_skip_empty_file "$base_dir/ex1/ft_archive_creation.py"; then
     printf "\n${TAG_RUN} ex1/ft_archive_creation.py - 저장하지 않는 케이스\n"
     (
       cd "$base_dir/ex1" || exit 1
-      printf '\n' | python3 ft_archive_creation.py "$sample_file"
+      cp "$sample_src" "$sample_name"
+      printf '\n' | python3 ft_archive_creation.py "$sample_name"
+      rm -f "$sample_name"
     ) || result=1
 
     printf "\n${TAG_RUN} ex1/ft_archive_creation.py - 새 파일 저장 케이스\n"
     (
       cd "$base_dir/ex1" || exit 1
+      cp "$sample_src" "$sample_name"
       rm -f new_fragment.txt
-      printf 'new_fragment.txt\n' | python3 ft_archive_creation.py "$sample_file"
-      rm -f new_fragment.txt
+      printf 'new_fragment.txt\n' | python3 ft_archive_creation.py "$sample_name"
+      rm -f "$sample_name" new_fragment.txt
     ) || result=1
   fi
 
@@ -912,7 +941,9 @@ run_module_04_tests() {
     printf "\n${TAG_RUN} ex2/ft_stream_management.py - 저장 권한 에러 케이스\n"
     (
       cd "$base_dir/ex2" || exit 1
-      printf '/etc/passwd\n' | python3 ft_stream_management.py "$sample_file"
+      cp "$sample_src" "$sample_name"
+      printf '/etc/passwd\n' | python3 ft_stream_management.py "$sample_name"
+      rm -f "$sample_name"
     ) || result=1
   fi
 
