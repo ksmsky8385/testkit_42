@@ -23,7 +23,7 @@ printf -v BLUE '\033[1;34m'
 printf -v CYAN '\033[1;36m'
 printf -v RESET '\033[0m'
 
-TAG_RUN="${YELLOW}[RUN]${RESET}"
+TAG_RUN="${PY_YELLOW}[RUN]${RESET}"
 TAG_INFO="${CYAN}[INFO]${RESET}"
 TAG_DONE="${GREEN}[DONE]${RESET}"
 TAG_WARN="${YELLOW}[WARN]${RESET}"
@@ -31,7 +31,7 @@ TAG_ERROR="${RED}[ERROR]${RESET}"
 TAG_SKIP="${BLUE}[SKIP]${RESET}"
 TAG_CHECK="${CYAN}[CHECK]${RESET}"
 TAG_CREATE="${GREEN}[CREATE]${RESET}"
-TAG_TEST="${CYAN}[TEST]${RESET}"
+TAG_TEST="${PY_BLUE}[TEST]${RESET}"
 TAG_STOP="${RED}[STOP]${RESET}"
 
 # ==============================
@@ -200,6 +200,7 @@ MODULE_10_TESTER="run_module_10_tests"
 # 모듈별 테스트 산출물 삭제 대상
 # ==============================
 
+MODULE_04_CLEANUP_PATTERNS=("new_fragment")
 MODULE_05_CLEANUP_PATTERNS=("output" "result" "csv" "json")
 MODULE_08_CLEANUP_PATTERNS=("png")
 MODULE_09_CLEANUP_PATTERNS=("generated_data")
@@ -478,6 +479,10 @@ run_flake8() {
       ;;
   esac
 
+  if [ "$result" -eq 0 ]; then
+    printf "${GREEN}Success: no issues found in all source files${RESET}\n"
+  fi
+
   return "$result"
 }
 
@@ -537,7 +542,7 @@ run_static_checks() {
     return 1
   fi
 
-  printf "\n${TAG_CHECK} mypy --strict 실행(main.py 제외)\n"
+  printf "\n${TAG_CHECK} mypy --strict 실행\n"
   if ! run_mypy "$base_dir"; then
     return 1
   fi
@@ -593,7 +598,7 @@ run_entry_file() {
   local file_name="$2"
   local short_dir
 
-  short_dir="${run_dir#"$PROJECT_ROOT"/}"
+  short_dir="$(basename "$run_dir")"
 
   if [ ! -f "$run_dir/$file_name" ]; then
     printf "${TAG_WARN} 진입점 파일 없음: %s/%s\n" "$run_dir" "$file_name"
@@ -604,7 +609,7 @@ run_entry_file() {
     return 0
   fi
 
-  printf "\n${TAG_RUN} %s - python3 %s\n" "$short_dir" "$file_name"
+  printf "\n${TAG_RUN} ${YELLOW}%s${RESET} - python3 %s" "$short_dir" "$file_name"
   (cd "$run_dir" || exit 1; python3 "$file_name")
 }
 
@@ -614,7 +619,7 @@ run_entry_file_with_args() {
   local short_dir
   shift 2
 
-  short_dir="${run_dir#"$PROJECT_ROOT"/}"
+  short_dir="$(basename "$run_dir")"
 
   if [ ! -f "$run_dir/$file_name" ]; then
     printf "${TAG_WARN} 진입점 파일 없음: %s/%s\n" "$run_dir" "$file_name"
@@ -625,9 +630,9 @@ run_entry_file_with_args() {
     return 0
   fi
 
-  printf "\n${TAG_RUN} %s - python3 %s" "$short_dir" "$file_name"
+  printf "\n${TAG_RUN} ${YELLOW}%s${RESET} - python3 %s" "$short_dir" "$file_name"
   if [ "$#" -gt 0 ]; then
-    printf ' %q' "$@"
+    printf " %q" "$@" 
   fi
   printf '\n'
 
@@ -673,24 +678,24 @@ ask_remove_generated_files() {
     return 0
   fi
 
-  printf "\n${TAG_WARN} module %s 테스트 산출물이 감지되었습니다.\n" "$module"
+  printf "\n${TAG_WARN} module %s 테스트 산출물이 감지되었습니다.\n\n" "$module"
   printf '%s\n' "$found_items"
-  printf '삭제하겠습니까? [y/N] '
+  printf '\n디렉토리 정리를 위해 삭제하겠습니까? [Y/n] '
   read -r answer
 
   case "$answer" in
-    y|Y|yes|YES)
+    n|N|no|NO)
+      printf "\n${TAG_SKIP} 생성 파일/디렉토리 삭제를 건너뜁니다.\n"
+      ;;
+    *)
       while IFS= read -r item; do
         [ -e "$item" ] && rm -rf "$item"
       done <<< "$found_items"
-      printf "${TAG_DONE} 생성 파일/디렉토리 삭제 완료\n"
-      ;;
-    *)
-      printf "${TAG_SKIP} 생성 파일/디렉토리 삭제를 건너뜁니다.\n"
+
+      printf "\n${TAG_DONE} 생성 파일/디렉토리 삭제 완료\n"
       ;;
   esac
 }
-
 
 run_in_venv() {
   local base_dir="$1"
@@ -777,6 +782,8 @@ run_generic_ex_file_tests() {
   local file_name
   local result=0
 
+  printf "\n${TAG_TEST} python module %s 실행 테스트\n" "$module"
+
   while IFS= read -r item; do
     [ -z "$item" ] && continue
 
@@ -795,7 +802,7 @@ run_generic_ex_file_tests() {
     run_dir="$(dirname "$file_path")"
     file_name="$(basename "$file_path")"
 
-    printf "\n${TAG_RUN}python_module_%s/%s - python3 %s\n" "$module" "$(dirname "$item")" "$file_name"
+    printf "\n${TAG_RUN} ${YELLOW}%s${RESET} - python3 %s\n" "$(dirname "$item")" "$file_name"
 
     if ! (cd "$run_dir" || exit 1; python3 "$file_name"); then
       result=1
@@ -811,6 +818,8 @@ run_module_00_tests() {
   local helper_main="$SCRIPT_DIR/resource/module_00/main.py"
   local result=0
 
+  printf "\n${TAG_TEST} python module 00 실행 테스트\n"
+
   if [ ! -f "$helper_main" ]; then
     printf "\n${TAG_ERROR} helper main.py가 없습니다: %s\n" "$helper_main"
     return 1
@@ -822,7 +831,7 @@ run_module_00_tests() {
 
   cp "$helper_main" "$base_dir/main.py"
 
-  printf "\n${TAG_RUN} module 00 helper main.py 실행\n"
+  printf "\n${TAG_RUN} python3 main.py\n\n"
   (
     cd "$base_dir" || exit 1
     python3 main.py
@@ -838,6 +847,8 @@ run_module_03_tests() {
   local base_dir="$2"
   local result=0
 
+  printf "\n${TAG_TEST} python module 03 실행 테스트\n"
+
   run_entry_file_with_args "$base_dir/ex0" "ft_command_quest.py" || result=1
   run_entry_file_with_args "$base_dir/ex0" "ft_command_quest.py" hello world 42 || result=1
   run_entry_file_with_args "$base_dir/ex0" "ft_command_quest.py" "Data Quest" || result=1
@@ -847,7 +858,7 @@ run_module_03_tests() {
   run_entry_file_with_args "$base_dir/ex1" "ft_score_analytics.py" ab ac || result=1
 
   if ! should_skip_empty_file "$base_dir/ex2/ft_coordinate_system.py"; then
-    printf "\n${TAG_RUN} python_module_03/ex2 - python3 ft_coordinate_system.py\n"
+    printf "\n${TAG_RUN} ${YELLOW}ex2${RESET} - python3 ft_coordinate_system.py\n"
     printf "\n${TAG_INFO} input pipe:\n\n"
     printf "       1) hello world\n"
     printf "       2) 1.0 , 2.5, 3.0\n"
@@ -882,6 +893,8 @@ run_module_04_tests() {
   local etc_src="$resource_dir/etc"
   local result=0
 
+  printf "\n${TAG_TEST} python module 04 실행 테스트\n"
+
   if [ ! -f "$sample_src" ]; then
     printf "${TAG_ERROR} module 04 테스트 리소스 파일이 없습니다: %s\n" "$sample_src"
     return 1
@@ -903,7 +916,6 @@ run_module_04_tests() {
     (
       cd "$base_dir/ex0" || exit 1
       cat "$sample_name"
-      printf "\n"
     ) || result=1
 
     run_entry_file_with_args "$base_dir/ex0" "ft_ancient_text.py" || result=1
@@ -917,37 +929,79 @@ run_module_04_tests() {
   fi
 
   if ! should_skip_empty_file "$base_dir/ex1/ft_archive_creation.py"; then
-    printf "\n${TAG_RUN} ex1/ft_archive_creation.py - 저장하지 않는 케이스\n"
+    printf "\n${TAG_RUN} ${YELLOW}ex1${RESET} - python3 ft_archive_creation.py ancient_fragment.txt\n"
+    printf "\n${TAG_INFO} input : \"\"\n\n"
+
     (
       cd "$base_dir/ex1" || exit 1
       cp "$sample_src" "$sample_name"
-      printf '\n' | python3 ft_archive_creation.py "$sample_name"
+
+      printf '\n' \
+        | python3 ft_archive_creation.py "$sample_name" \
+        | awk '{ gsub("Enter new file name \\(or empty\\): ", "Enter new file name (or empty):\n"); print }'
+
       rm -f "$sample_name"
     ) || result=1
 
-    printf "\n${TAG_RUN} ex1/ft_archive_creation.py - 새 파일 저장 케이스\n"
+    printf "\n${TAG_RUN} ${YELLOW}ex1${RESET} - python3 ft_archive_creation.py ancient_fragment.txt\n"
+    printf "\n${TAG_INFO} input : "new_fragment.txt"\n\n"
+
     (
       cd "$base_dir/ex1" || exit 1
       cp "$sample_src" "$sample_name"
-      rm -f new_fragment.txt
-      printf 'new_fragment.txt\n' | python3 ft_archive_creation.py "$sample_name"
-      rm -f "$sample_name" new_fragment.txt
+
+      printf 'new_fragment.txt\n' \
+        | python3 ft_archive_creation.py "$sample_name" \
+        | awk '{ gsub("Enter new file name \\(or empty\\): ", "Enter new file name (or empty):\n"); print }'
+
+      printf "\n${TAG_INFO} cat new_fragment.txt\n"
+      cat new_fragment.txt
+      printf '\n'
+
+      rm -f "$sample_name"
     ) || result=1
   fi
 
   run_entry_file_with_args "$base_dir/ex2" "ft_stream_management.py" "foo" || result=1
 
   if ! should_skip_empty_file "$base_dir/ex2/ft_stream_management.py"; then
-    printf "\n${TAG_RUN} ex2/ft_stream_management.py - 저장 권한 에러 케이스\n"
+    printf "\n${TAG_RUN} ${YELLOW}ex2${RESET} - python3 ft_stream_management.py ancient_fragment.txt\n"
     (
       cd "$base_dir/ex2" || exit 1
       cp "$sample_src" "$sample_name"
-      printf '/etc/passwd\n' | python3 ft_stream_management.py "$sample_name"
+
+      printf '/etc/passwd\n' \
+        | python3 -u ft_stream_management.py "$sample_name" 2>&1 \
+        | awk '{ gsub("Enter new file name \\(or empty\\): ", "Enter new file name (or empty):\n"); print }'
+
       rm -f "$sample_name"
     ) || result=1
   fi
 
-  run_entry_file_with_args "$base_dir/ex3" "ft_vault_security.py" || result=1
+  if ! should_skip_empty_file "$base_dir/ex3/ft_vault_security.py"; then
+    (
+      cd "$base_dir/ex3" || exit 1
+
+      cp "$sample_src" "$sample_name"
+
+      mkdir -p etc
+
+      if [ -f "$etc_src/master.passwd" ]; then
+        cp "$etc_src/master.passwd" etc/master.passwd
+        chmod 000 etc/master.passwd 2>/dev/null || true
+      else
+        printf "${TAG_WARN} module 04 권한 테스트 리소스가 없습니다: %s/master.passwd\n" "$etc_src"
+      fi
+    ) || result=1
+
+    run_entry_file_with_args "$base_dir/ex3" "ft_vault_security.py" || result=1
+
+    chmod -R u+rwx "$base_dir/ex3/etc" 2>/dev/null || true
+    rm -rf "$base_dir/ex3/etc"
+    rm -f "$base_dir/ex3/$sample_name"
+  fi
+
+  ask_remove_generated_files "$_module" "$base_dir"
 
   return "$result"
 }
@@ -956,6 +1010,8 @@ run_module_05_tests() {
   local module="$1"
   local base_dir="$2"
   local result=0
+
+  printf "\n${TAG_TEST} python module 05 실행 테스트\n"
 
   run_generic_module_tests "$module" "$base_dir" || result=1
   ask_remove_generated_files "$module" "$base_dir"
@@ -968,7 +1024,7 @@ run_module_06_tests() {
   local base_dir="$2"
   local result=0
 
-  printf "\n${TAG_INFO} module 06 패키지형 테스트\n"
+  printf "\n${TAG_TEST} python module 06 실행 테스트\n"
 
   run_entry_file "$base_dir" "ft_alembic_0.py" || result=1
   run_entry_file "$base_dir" "ft_alembic_1.py" || result=1
@@ -992,7 +1048,7 @@ run_module_07_tests() {
   local base_dir="$2"
   local result=0
 
-  printf "\n${TAG_INFO} module 07 패키지형 테스트\n"
+  printf "\n${TAG_TEST} python module 07 실행 테스트\n"
 
   run_entry_file "$base_dir" "battle.py" || result=1
   run_entry_file "$base_dir" "capacitor.py" || result=1
@@ -1007,7 +1063,7 @@ run_module_08_tests() {
   local result=0
 
   printf "
-${TAG_INFO} module 08 .venv 환경 실행 테스트
+printf "\n${TAG_TEST} python module 08 실행 테스트\n"
 "
 
   if [ ! -f "$base_dir/.venv/bin/activate" ]; then
@@ -1045,9 +1101,7 @@ run_module_09_tests() {
   local resource_dir="$SCRIPT_DIR/resource/module_09"
   local result=0
 
-  printf "
-${TAG_INFO} module 09 .venv 환경 Pydantic 테스트
-"
+  printf "\n${TAG_TEST} python module 09 실행 테스트\n"
 
   if [ ! -f "$base_dir/.venv/bin/activate" ]; then
     run_in_venv "$base_dir" true
@@ -1087,7 +1141,7 @@ run_module_10_tests() {
   local generator_dst="$base_dir/data_generator.py"
   local result=0
 
-  printf "\n${TAG_INFO} module 10 functional programming 테스트\n"
+  printf "\n${TAG_TEST} python module 10 실행 테스트\n"
 
   if [ -f "$generator_src" ]; then
     if should_skip_empty_file "$generator_src"; then
@@ -1344,21 +1398,36 @@ get_tip_file_by_index() {
   local target_index="$2"
   local module_dir="$SCRIPT_DIR/resource/tips/$module"
   local file
-  local index=0
+  local filename
+  local number
+  local normalized_target
+  local normalized_number
 
   if ! [[ "$target_index" =~ ^[0-9]+$ ]]; then
     return 1
   fi
 
+  normalized_target="$target_index"
+
+  if [[ "$target_index" =~ ^[0-9]$ ]]; then
+    normalized_target="0$target_index"
+  fi
+
   while IFS= read -r file; do
     [ -f "$file" ] || continue
 
-    if [ "$index" -eq "$target_index" ]; then
+    filename="$(basename "$file" .md)"
+    number="${filename%%_*}"
+
+    normalized_number="$number"
+    if [[ "$number" =~ ^[0-9]$ ]]; then
+      normalized_number="0$number"
+    fi
+
+    if [ "$normalized_number" = "$normalized_target" ]; then
       printf '%s' "$file"
       return 0
     fi
-
-    index=$((index + 1))
   done < <(find "$module_dir" -maxdepth 1 -type f -name '*.md' | sort -V)
 
   return 1
