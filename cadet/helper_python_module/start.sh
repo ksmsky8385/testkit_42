@@ -15,7 +15,6 @@ printf -v PY_BLUE '\033[1;38;5;33m'
 printf -v PY_YELLOW '\033[1;38;5;220m'
 printf -v BOLD '\033[1m'
 printf -v RESET '\033[0m'
-
 printf -v RED '\033[1;31m'
 printf -v GREEN '\033[1;32m'
 printf -v YELLOW '\033[1;33m'
@@ -188,7 +187,7 @@ MODULE_01_TESTER="run_generic_module_tests"
 MODULE_02_TESTER="run_generic_module_tests"
 MODULE_03_TESTER="run_module_03_tests"
 MODULE_04_TESTER="run_module_04_tests"
-MODULE_05_TESTER="run_module_05_tests"
+MODULE_05_TESTER="run_generic_module_tests"
 MODULE_06_TESTER="run_module_06_tests"
 MODULE_07_TESTER="run_module_07_tests"
 MODULE_08_TESTER="run_module_08_tests"
@@ -201,7 +200,6 @@ MODULE_10_TESTER="run_module_10_tests"
 # ==============================
 
 MODULE_04_CLEANUP_PATTERNS=("new_fragment")
-MODULE_05_CLEANUP_PATTERNS=("output" "result" "csv" "json")
 MODULE_08_CLEANUP_PATTERNS=("png")
 MODULE_09_CLEANUP_PATTERNS=("generated_data")
 
@@ -419,8 +417,14 @@ ensure_tool_or_choose() {
   local tool="$1"
   local package="$2"
   local answer
+  local local_tool="$HOME/.local/bin/$tool"
 
-  if command -v "$tool" >/dev/null 2>&1 && "$tool" --version >/dev/null 2>&1; then
+  if "$tool" --version >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if [ -x "$local_tool" ] && "$local_tool" --version >/dev/null 2>&1; then
+    export PATH="$HOME/.local/bin:$PATH"
     return 0
   fi
 
@@ -435,11 +439,15 @@ ensure_tool_or_choose() {
     1)
       python3 -m pip install --user "$package"
       ensure_local_bin_in_bashrc
-
       export PATH="$HOME/.local/bin:$PATH"
 
-      command -v "$tool" >/dev/null 2>&1 && return 0
-      python3 -m "$package" --version >/dev/null 2>&1 && return 2
+      if "$tool" --version >/dev/null 2>&1; then
+        return 0
+      fi
+
+      if python3 -m "$package" --version >/dev/null 2>&1; then
+        return 2
+      fi
 
       printf "${TAG_ERROR} 설치 후에도 %s 실행을 확인하지 못했습니다.\n" "$tool"
       return 1
@@ -632,7 +640,7 @@ run_entry_file_with_args() {
 
   printf "\n${TAG_RUN} ${YELLOW}%s${RESET} - python3 %s" "$short_dir" "$file_name"
   if [ "$#" -gt 0 ]; then
-    printf " %q" "$@" 
+    printf " %q" "$@"
   fi
   printf '\n'
 
@@ -1006,19 +1014,6 @@ run_module_04_tests() {
   return "$result"
 }
 
-run_module_05_tests() {
-  local module="$1"
-  local base_dir="$2"
-  local result=0
-
-  printf "\n${TAG_TEST} python module 05 실행 테스트\n"
-
-  run_generic_module_tests "$module" "$base_dir" || result=1
-  ask_remove_generated_files "$module" "$base_dir"
-
-  return "$result"
-}
-
 run_module_06_tests() {
   local _module="$1"
   local base_dir="$2"
@@ -1275,6 +1270,7 @@ ask_glow_or_cat() {
 show_tip_file() {
   local tip_file="$1"
   local glow_path
+  local glow_cmd=""
   local choice
   local tip_module
   local tip_name
@@ -1285,13 +1281,19 @@ show_tip_file() {
   tip_name="$(basename "$tip_file" .md)"
   tip_title="python module $tip_module / $tip_name"
 
+  if glow --version >/dev/null 2>&1; then
+    glow_cmd="glow"
+  elif [ -x "$glow_path" ] && "$glow_path" --version >/dev/null 2>&1; then
+    glow_cmd="$glow_path"
+  fi
+
   clear 2>/dev/null || true
   print_line
   printf 'TIP: %s\n' "$tip_title"
   print_line
 
-  if [ -x "$glow_path" ]; then
-    "$glow_path" "$tip_file"
+  if [ -n "$glow_cmd" ]; then
+    "$glow_cmd" "$tip_file"
     return 0
   fi
 
@@ -1308,7 +1310,9 @@ show_tip_file() {
       printf '\n'
       ;;
     1)
-      if [ -x "$glow_path" ]; then
+      glow_path="$(get_glow_path)"
+
+      if [ -x "$glow_path" ] && "$glow_path" --version >/dev/null 2>&1; then
         clear 2>/dev/null || true
         print_line
         printf 'TIP: %s\n' "$tip_title"
