@@ -1,5 +1,7 @@
 #!/bin/bash
 
+echo -ne "\033]0;pymo\007"
+
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -617,7 +619,7 @@ run_entry_file() {
     return 0
   fi
 
-  printf "\n${TAG_RUN} ${YELLOW}%s${RESET} - python3 %s" "$short_dir" "$file_name"
+  printf "\n${TAG_RUN} ${YELLOW}%s${RESET} - python3 %s\n" "$short_dir" "$file_name"
   (cd "$run_dir" || exit 1; python3 "$file_name")
 }
 
@@ -1025,7 +1027,14 @@ run_module_06_tests() {
   run_entry_file "$base_dir" "ft_alembic_1.py" || result=1
   run_entry_file "$base_dir" "ft_alembic_2.py" || result=1
   run_entry_file "$base_dir" "ft_alembic_3.py" || result=1
-  run_entry_file "$base_dir" "ft_alembic_4.py" || result=1
+
+	printf "\n${TAG_INFO} ft_alembic_4.py는 의도된 예외가 발생됩니다.\n"
+	if ! run_entry_file "$base_dir" "ft_alembic_4.py"; then
+		printf "${TAG_INFO} ft_alembic_4.py 예외 발생 확인\n"
+	else
+		printf "\n${TAG_WARN} ft_alembic_4.py는 예외가 발생해야 합니다."
+	fi
+
   run_entry_file "$base_dir" "ft_alembic_5.py" || result=1
   run_entry_file "$base_dir" "ft_distillation_0.py" || result=1
   run_entry_file "$base_dir" "ft_distillation_1.py" || result=1
