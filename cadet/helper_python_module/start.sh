@@ -5,7 +5,25 @@ echo -ne "\033]0;pymo\007"
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+BASE_CONFIG_FILE="$SCRIPT_DIR/base.env"
+CONFIG_FILE="$SCRIPT_DIR/config.env"
+
+if [ -f "$CONFIG_FILE" ]; then
+  # shellcheck disable=SC1090
+  source "$CONFIG_FILE"
+else
+  PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+fi
+
+if [ -z "${PROJECT_ROOT:-}" ]; then
+	PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+fi
+
+if [ -z "${MODULE_DIR_NAME:-}" ]; then
+	MODULE_DIR_NAME="python_module_"
+fi
+
 
 REGISTERED_MODULES=("00" "01" "02" "03" "04" "05" "06" "07" "08" "09" "10")
 
@@ -219,7 +237,7 @@ pause() {
 }
 
 module_dir() {
-  printf '%s/python_module_%s' "$PROJECT_ROOT" "$1"
+  printf '%s/%s%s' "$PROJECT_ROOT" "$MODULE_DIR_NAME" "$1"
 }
 
 is_registered_module() {
@@ -266,17 +284,6 @@ remove_mypy_cache() {
   [ -d "$base_dir/.mypy_cache" ] && rm -rf "$base_dir/.mypy_cache"
 }
 
-print_registered_modules_with_names() {
-  local module
-  local name
-
-  for module in "${REGISTERED_MODULES[@]}"; do
-    name="$(get_module_name "$module")"
-    printf '%s. "%s"\n' "$module" "$name"
-  done
-}
-
-
 # ==============================
 # 디렉토리/파일 생성
 # ==============================
@@ -318,9 +325,8 @@ select_create_modules() {
   local module
 
   print_line
-  printf '생성할 module 번호를 입력하세요. (번호 또는 all)\n\n'
-  printf '현재 등록된 module:\n\n'
-  print_registered_modules_with_names
+  printf "생성할 module 번호를 입력하세요. (번호 또는 all)\n\n"
+  print_registered_modules_with_status "create"
   printf '\n> '
   read -r input
 
@@ -335,6 +341,71 @@ select_create_modules() {
 
     create_module_structure "$input"
   fi
+}
+
+get_module_status() {
+  local module="$1"
+  local base_dir
+  local item
+  local file_path
+  local has_empty=0
+
+  base_dir="$(module_dir "$module")"
+
+  if [ ! -d "$base_dir" ]; then
+    printf 'missing'
+    return 0
+  fi
+
+  while IFS= read -r item; do
+    [ -z "$item" ] && continue
+    file_path="$base_dir/$item"
+
+    if [ ! -e "$file_path" ]; then
+      printf 'missing'
+      return 0
+    fi
+
+    if [ -f "$file_path" ] && [ ! -s "$file_path" ]; then
+      has_empty=1
+    fi
+  done < <(get_module_files "$module")
+
+  if [ "$has_empty" -eq 1 ]; then
+    printf 'empty'
+  else
+    printf 'complete'
+  fi
+}
+
+print_registered_modules_with_status() {
+  local mode="$1"
+  local module
+  local name
+  local status
+
+  for module in "${REGISTERED_MODULES[@]}"; do
+    name="$(get_module_name "$module")"
+    status="$(get_module_status "$module")"
+
+    case "$mode:$status" in
+      create:complete)
+        printf '%s. "%s" %b\n' "$module" "$name" "${GREEN}- Created${RESET}"
+        ;;
+      test:missing)
+        printf '%b. "%s"\n' "${RED}${module}${RESET}" "$name"
+        ;;
+      test:empty)
+        printf '%b. "%s"\n' "${YELLOW}${module}${RESET}" "$name"
+        ;;
+      test:complete)
+        printf '%b. "%s"\n' "${GREEN}${module}${RESET}" "$name"
+        ;;
+      *)
+        printf '%s. "%s"\n' "$module" "$name"
+        ;;
+    esac
+  done
 }
 
 # ==============================
@@ -383,8 +454,7 @@ select_test_module() {
 
   print_line
   printf '테스트할 module 번호를 입력하세요.\n\n'
-  printf '현재 등록된 module:\n\n'
-  print_registered_modules_with_names
+  print_registered_modules_with_status "test"
   printf '\n> '
   read -r module
 
@@ -1028,21 +1098,33 @@ run_module_06_tests() {
   run_entry_file "$base_dir" "ft_alembic_2.py" || result=1
   run_entry_file "$base_dir" "ft_alembic_3.py" || result=1
 
-	printf "\n${TAG_INFO} ft_alembic_4.py는 의도된 예외가 발생됩니다.\n"
-	if ! run_entry_file "$base_dir" "ft_alembic_4.py"; then
-		printf "${TAG_INFO} ft_alembic_4.py 예외 발생 확인\n"
-	else
-		printf "\n${TAG_WARN} ft_alembic_4.py는 예외가 발생해야 합니다."
+	if ! should_skip_empty_file "$base_dir/ft_alembic_4.py"; then
+		printf "\n${TAG_INFO} ft_alembic_4.py는 의도된 예외가 발생됩니다.\n"
+
+		if ! run_entry_file "$base_dir" "ft_alembic_4.py"; then
+			printf "\n${TAG_INFO} ft_alembic_4.py 예외 발생 확인\n"
+		else
+			printf "\n${TAG_WARN} ft_alembic_4.py는 예외가 발생해야 합니다.\n"
+		fi
 	fi
 
   run_entry_file "$base_dir" "ft_alembic_5.py" || result=1
   run_entry_file "$base_dir" "ft_distillation_0.py" || result=1
   run_entry_file "$base_dir" "ft_distillation_1.py" || result=1
-  run_entry_file "$base_dir" "ft_kaboom_0.py" || result=1
-  run_entry_file "$base_dir" "ft_kaboom_1.py" || result=1
   run_entry_file "$base_dir" "ft_transmutation_0.py" || result=1
   run_entry_file "$base_dir" "ft_transmutation_1.py" || result=1
   run_entry_file "$base_dir" "ft_transmutation_2.py" || result=1
+	run_entry_file "$base_dir" "ft_kaboom_0.py" || result=1
+
+	if ! should_skip_empty_file "$base_dir/ft_kaboom_1.py"; then
+		printf "\n${TAG_INFO} ft_kaboom_1.py는 의도된 예외가 발생됩니다.\n"
+
+		if ! run_entry_file "$base_dir" "ft_kaboom_1.py"; then
+			printf "\n${TAG_INFO} ft_kaboom_1.py 예외 발생 확인\n"
+		else
+			printf "\n${TAG_WARN} ft_kaboom_1.py는 예외가 발생해야 합니다.\n"
+		fi
+	fi
 
   return "$result"
 }
@@ -1505,6 +1587,232 @@ select_tip_file() {
 }
 
 # ==============================
+# 설정 페이지
+# ==============================
+
+save_config() {
+  printf 'PROJECT_ROOT="%s"\n' "$PROJECT_ROOT" > "$CONFIG_FILE"
+  printf 'MODULE_DIR_NAME="%s"\n' "$MODULE_DIR_NAME" >> "$CONFIG_FILE"
+}
+
+looks_like_module_dir() {
+  local module="$1"
+  local dir="$2"
+  local item
+
+  while IFS= read -r item; do
+    [ -z "$item" ] && continue
+
+    if [ -e "$dir/$item" ]; then
+      return 0
+    fi
+  done < <(get_module_files "$module")
+
+  return 1
+}
+
+sync_module_dir_names() {
+  local module
+  local expected_dir
+  local expected_name
+  local dir
+  local matched_dirs=""
+  local rename_pairs=""
+  local count
+  local answer
+  local src
+  local dst
+  local has_error=0
+
+  for module in "${REGISTERED_MODULES[@]}"; do
+    expected_dir="$(module_dir "$module")"
+    expected_name="$(basename "$expected_dir")"
+    matched_dirs=""
+
+		for dir in "$PROJECT_ROOT"/*"$module"*; do
+    # for dir in "$PROJECT_ROOT"/*; do
+      [ -d "$dir" ] || continue
+      [ "$dir" = "$expected_dir" ] && continue
+
+      if looks_like_module_dir "$module" "$dir"; then
+        matched_dirs="${matched_dirs}${dir}"$'\n'
+      fi
+    done
+
+    count="$(printf '%s' "$matched_dirs" | sed '/^$/d' | wc -l)"
+
+    if [ "$count" -ge 2 ]; then
+      printf "${TAG_ERROR} module %s로 보이는 폴더가 2개 이상입니다. 이름 변경을 건너뜁니다.\n" "$module"
+      printf '%s' "$matched_dirs" | sed '/^$/d'
+      has_error=1
+      continue
+    fi
+
+    if [ "$count" -eq 1 ]; then
+      src="$(printf '%s' "$matched_dirs" | sed '/^$/d')"
+      dst="$expected_dir"
+
+      if [ -e "$dst" ]; then
+        printf "${TAG_ERROR} 변경 대상 폴더가 이미 존재합니다: %s\n" "$dst"
+        has_error=1
+        continue
+      fi
+
+      rename_pairs="${rename_pairs}${src}|${dst}"$'\n'
+    fi
+  done
+
+  if [ -z "$(printf '%s' "$rename_pairs" | sed '/^$/d')" ]; then
+    if [ "$has_error" -eq 0 ]; then
+      printf "${TAG_INFO} 변경할 모듈 폴더가 없습니다.\n"
+    fi
+    return "$has_error"
+  fi
+
+  printf "\n${TAG_INFO} 모듈 폴더가 감지되었습니다:\n\n"
+
+  while IFS='|' read -r src dst; do
+    [ -z "$src" ] && continue
+    printf '%s - %s\n' "$(basename "$src")" "$(basename "$dst")"
+  done <<< "$rename_pairs"
+
+  printf '\n모든 모듈 폴더명을 서식에 맞게 변경하겠습니까? [Y/n] '
+  read -r answer
+
+  case "$answer" in
+    n|N|no|NO)
+      printf "${TAG_SKIP} 폴더명 변경을 건너뜁니다.\n"
+      return "$has_error"
+      ;;
+  esac
+
+  while IFS='|' read -r src dst; do
+    [ -z "$src" ] && continue
+
+    if [ -e "$dst" ]; then
+      printf "${TAG_ERROR} 변경 대상 폴더가 이미 존재하여 건너뜁니다: %s\n" "$dst"
+      has_error=1
+      continue
+    fi
+
+    mv "$src" "$dst"
+    printf "${TAG_DONE} 폴더명 변경: %s -> %s\n" "$(basename "$src")" "$(basename "$dst")"
+  done <<< "$rename_pairs"
+
+  return "$has_error"
+}
+
+reset_helper_config() {
+  local answer
+
+  printf "${TAG_WARN} 헬퍼 설정을 초기화하시겠습니까? [Y/n] "
+  read -r answer
+
+  case "$answer" in
+    n|N|no|NO)
+      printf "${TAG_SKIP} 설정 초기화를 취소했습니다.\n"
+      ;;
+    *)
+      if [ -f "$BASE_CONFIG_FILE" ]; then
+        cp "$BASE_CONFIG_FILE" "$CONFIG_FILE"
+        # shellcheck disable=SC1090
+        source "$CONFIG_FILE"
+        set_default_config_values
+        printf "${TAG_DONE} 헬퍼 설정을 base.env 기준으로 초기화했습니다.\n"
+      else
+        rm -f "$CONFIG_FILE"
+        PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+        MODULE_DIR_NAME="python_module_"
+        printf "${TAG_DONE} 헬퍼 설정을 기본값으로 초기화했습니다.\n"
+      fi
+      ;;
+  esac
+}
+
+select_project_root() {
+  local new_root
+
+  print_line
+  printf '현재 Project Root:\n%s\n\n' "$PROJECT_ROOT"
+  printf '새 Project Root 경로를 입력하세요.\n'
+  printf '> '
+  read -r new_root
+
+  if [ ! -d "$new_root" ]; then
+    printf "${TAG_ERROR} 존재하지 않는 경로입니다: %s\n" "$new_root"
+    return 1
+  fi
+
+  PROJECT_ROOT="$new_root"
+  save_config
+  printf "${TAG_DONE} 프로젝트 루트가 저장되었습니다: %s\n" "$PROJECT_ROOT"
+
+	sync_module_dir_names
+}
+
+select_module_dir_name() {
+  local new_name
+
+  print_line
+  printf '현재 모듈 폴더명 서식:\n%s\n\n' "$MODULE_DIR_NAME"
+  printf '새 모듈 폴더명 서식을 입력하세요.\n'
+  printf '예: python_module_  → python_module_00\n'
+  printf '예: module_         → module_00\n'
+	printf '빈 값 입력 시       → 00, 01, 02\n'
+  printf '> '
+  read -r new_name
+
+  MODULE_DIR_NAME="$new_name"
+  save_config
+  printf "${TAG_DONE} 모듈 폴더명 서식이 저장되었습니다: %s\n" "$MODULE_DIR_NAME"
+
+	sync_module_dir_names
+}
+
+helper_settings_menu() {
+  local choice
+
+  while true; do
+    clear 2>/dev/null || true
+    print_line
+    printf '%b %b\n\n' "$TITLE_MAIN" "$TITLE_SUB"
+		printf '헬퍼 기본설정 페이지\n\n'
+    printf "${CYAN}루트 경로:${RESET} %s\n" "$PROJECT_ROOT"
+    printf "${CYAN}폴더 서식:${RESET} %s\n\n" "$MODULE_DIR_NAME"
+    print_line
+    printf '0. 설정 초기화\n'
+    printf '1. 프로젝트 루트 변경\n'
+    printf '2. 모듈 폴더명 서식 변경\n'
+    printf '3. 초기화면으로 돌아가기\n'
+    print_line
+    printf '> '
+    read -r choice
+
+    case "$choice" in
+      0)
+        reset_helper_config
+        pause
+        ;;
+      1)
+        select_project_root
+        pause
+        ;;
+      2)
+        select_module_dir_name
+        pause
+        ;;
+      3)
+        return 0
+        ;;
+      *)
+        printf "${TAG_ERROR} 잘못된 입력입니다.\n"
+        pause
+        ;;
+    esac
+  done
+}
+
+# ==============================
 # 메인 메뉴
 # ==============================
 
@@ -1554,7 +1862,8 @@ main_menu() {
     printf '1. 디렉토리/파일 생성\n'
     printf '2. 정적 검사 및 실행 테스트\n'
     printf '3. 과제 팁 보기\n'
-    printf '4. 다 집어치우고 종료\n'
+		printf '4. 헬퍼 설정\n'
+    printf '5. 다 집어치우고 종료\n'
     print_line
     printf '> '
     read -r choice
@@ -1577,6 +1886,9 @@ main_menu() {
         ask_continue
         ;;
       4)
+				helper_settings_menu
+        ;;
+      5)
         clear 2>/dev/null || true
         printf 'Python Module Helper : 수고!!\n'
         exit 0
