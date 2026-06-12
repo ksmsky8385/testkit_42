@@ -1717,7 +1717,6 @@ reset_helper_config() {
         cp "$BASE_CONFIG_FILE" "$CONFIG_FILE"
         # shellcheck disable=SC1090
         source "$CONFIG_FILE"
-        set_default_config_values
         printf "${TAG_DONE} 헬퍼 설정을 base.env 기준으로 초기화했습니다.\n"
       else
         rm -f "$CONFIG_FILE"
